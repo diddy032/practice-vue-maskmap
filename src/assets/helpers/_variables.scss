@@ -1,0 +1,34 @@
+$color_primary:#EF8A00;
+$color_secondary:#707070;
+$color_info:#00C3C3;
+$color_dark:#9F9F9F;
+$color_BC:#FFFFFF;
+$color_siderBC: #F7F7F7;
+$color_shadow: #00000029;
+
+* {
+  outline: none;
+}
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Noto Sans TC', sans-serif;
+}
+.bg-color-info{
+  background-color: $color_info;
+}
+.bg-color-dark{
+  background-color: $color_dark;
+}
+.clearfix{
+  clear: both;
+}
+.show-cursor{
+  cursor: pointer;
+}
+.wrap {
+  position: relative;
+  overflow: hidden;
+}
+
+
