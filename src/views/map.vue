@@ -50,7 +50,7 @@
               <div class="container-title" v-else>請選擇要搜尋的區域</div>
               <div class="container-buttons">
                 <button class="show-cursor" v-if="haveUserPosition" @click="filterStore" :class="{isActive : distanceActive}">距離最近</button>
-                <button class="show-cursor" @click="getLikeStoreData" :class="{isActive : likeStoreActive}">已標星號</button>
+                <button class="show-cursor" v-if="likeStore.length>0" @click="getLikeStoreData" :class="{isActive : likeStoreActive}">已標星號</button>
               </div>
               <div class="clearfix"></div>
             </div>
@@ -70,7 +70,7 @@
                       </div>
                     </div>
                     <div class="properties-card-right">
-                      <a @click="EditLikeList(item.properties.id)">
+                      <a @click.stop="EditLikeList(item.properties.id)">
                         <img class="card-icon" src="../assets/images/icon_star_unselected.svg" alt="" v-if="likeStore.indexOf(item.properties.id)=== -1">
                         <img class="card-icon" src="../assets/images/icon_star_selected.svg" alt="" v-else>
                       </a>
@@ -129,13 +129,13 @@ export default {
       data: [],
       pharmacies: [],
       likeStore: JSON.parse(localStorage.getItem('Like Item List')) || [],
-      osmMap: {},
       haveUserPosition: false,
       userMarker: null,
       userPosition: null,
       isLoading: false,
-      distanceActive: true,
+      distanceActive: false,
       likeStoreActive: false,
+      screenWidth: document.body.clientWidth,
       maskCategory: '',
       nowTime: '',
       nowDay: '',
@@ -163,19 +163,24 @@ export default {
       vm.$http.get(url).then((response) => {
         vm.data = response.data.features
         vm.updataMap()
-        vm.showLocation()
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            function (position) {
+              vm.userPosition = [position.coords.latitude, position.coords.longitude]
+              osmMap.setView(new L.LatLng(vm.userPosition[0], vm.userPosition[1]), 17)
+              vm.userMarker = L.marker([vm.userPosition[0], vm.userPosition[1]], { icon: redIcon, title: '目前位置' }).bindPopup('<h5>目前位置</h5>').addTo(osmMap).openPopup()
+              osmMap.addLayer(vm.userMarker)
+              if (vm.userMarker !== null) {
+                vm.haveUserPosition = true
+              }
+              vm.showLocation()
+            },
+            function () {
+              vm.showLocation()
+            }
+          )
+        }
       })
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          function (position) {
-            vm.userPosition = [position.coords.latitude, position.coords.longitude]
-            osmMap.setView(new L.LatLng(vm.userPosition[0], vm.userPosition[1]), 17)
-            vm.userMarker = L.marker([vm.userPosition[0], vm.userPosition[1]], { icon: redIcon, title: '目前位置' }).bindPopup('<h5>目前位置</h5>').addTo(osmMap).openPopup()
-            osmMap.addLayer(vm.userMarker)
-            vm.haveUserPosition = true
-          }
-        )
-      }
     },
     updataMap () {
       const vm = this
@@ -200,9 +205,9 @@ export default {
             </div>
           </div>
           <div class="markers-properties-card-right">
-            <a class="icon-star"><img class="markers-card-icon" src="${vm.likeStore.indexOf(pharmacy.properties.id) === -1 ? '/img/icon_star_unselected.36dcd862.svg' : '/img/icon_star_selected.236372e7.svg'}"></a>
-            <a href="https://www.google.com.tw/maps/place/${pharmacy.properties.address}" target="_blank"><img class="markers-card-icon" src="/img/icon_nav.074b1e78.svg"></a>
-          </div>
+            <a class="addLike" data-id="${pharmacy.properties.id}"><div class="markers-icon ${vm.likeStore.indexOf(pharmacy.properties.id) === -1 ? 'icon-unstar' : 'icon-star'}"></div></a>
+            <a href="https://www.google.com.tw/maps/place/${pharmacy.properties.address}" target="_blank"><div class="markers-icon icon-road"></div></a>
+        </div>
         </div>
         <div class="markers-mask-info">
           <div class="markers-mask-adult ${pharmacy.properties.mask_adult ? 'bg-color-info' : 'bg-color-dark'}">
@@ -218,6 +223,7 @@ export default {
       })
       osmMap.addLayer(markers)
       vm.isLoading = false
+      vm.setMapStaricon()
     },
     changeMap () {
       this.removeMarker()
@@ -247,12 +253,31 @@ export default {
         }
       )
     },
+    setMapStaricon () {
+      const vm = this
+      osmMap.on('layeradd', function () {
+        const addlikeBtns = [...document.querySelectorAll('.addLike')]
+        addlikeBtns.forEach(btn => {
+          btn.addEventListener('click', addLike, false)
+          function addLike () {
+            const id = this.dataset.id
+            const pharmacy = vm.data.find(element => {
+              return element.properties.id === id
+            })
+            vm.EditLikeList(id)
+            vm.penTo(pharmacy)
+          }
+        })
+      })
+    },
     showLocation () {
-      if (this.haveUserPosition) {
-        this.calDistance()
-        this.filterStore()
+      const vm = this
+      if (vm.userPosition !== null) {
+        vm.calDistance()
+        vm.filterStore()
       } else {
-        alert('未偵測到您的地理位置')
+        alert('沒有目前位置')
+        vm.distanceActive = false
       }
     },
     // 計算距離
@@ -267,23 +292,27 @@ export default {
     },
     // 顯示距離內的藥局並由近到遠排列
     filterStore () {
-      this.pharmacies = []
-      this.distanceActive = true
-      this.likeStoreActive = false
-      this.maskCategory = ''
-      this.pharmacies = this.data.filter(pharmacy => {
-        return pharmacy.geometry.coordinates[2] <= 5
-      })
-      this.pharmacies = this.pharmacies.sort((x, y) =>
-        x.geometry.coordinates[2] - y.geometry.coordinates[2]
-      )
+      const vm = this
+      const num = vm.data[0].geometry.coordinates.length
+      if (num < 3 && vm.haveUserPosition === true) {
+        vm.calDistance()
+      } else {
+        vm.pharmacies = []
+        vm.distanceActive = true
+        vm.likeStoreActive = false
+        vm.maskCategory = ''
+        vm.pharmacies = vm.data.filter(pharmacy => {
+          return pharmacy.geometry.coordinates[2] <= 5
+        })
+        vm.pharmacies = vm.pharmacies.sort((x, y) =>
+          x.geometry.coordinates[2] - y.geometry.coordinates[2]
+        )
+      }
     },
     penTo (pharmacy) {
       const { properties, geometry } = pharmacy
       const vm = this
-      if (window.screen.width < 500) {
-        vm.toggleSidebar()
-      }
+      vm.mobilSide()
       osmMap.panTo(new L.LatLng(geometry.coordinates[1], geometry.coordinates[0], properties))
       L.marker([pharmacy.geometry.coordinates[1], pharmacy.geometry.coordinates[0]], { weight: 1.5, color: '#222', opacity: 1, icon: blueIcon }).bindPopup(`
       <div class="markers-properties-card-warp">
@@ -295,8 +324,8 @@ export default {
           </div>
         </div>
         <div class="markers-properties-card-right">
-          <a><img class="markers-card-icon" src="${vm.likeStore.indexOf(pharmacy.properties.id) === -1 ? '/img/icon_star_unselected.36dcd862.svg' : '/img/icon_star_selected.236372e7.svg'}"></a>
-          <a href="https://www.google.com.tw/maps/place/${pharmacy.properties.address}" target="_blank"><img class="markers-card-icon" src="/img/icon_nav.074b1e78.svg"></a>
+          <a class="addLike" data-id="${pharmacy.properties.id}"><div class="markers-icon ${vm.likeStore.indexOf(pharmacy.properties.id) === -1 ? 'icon-unstar' : 'icon-star'}"></div></a>
+          <a href="https://www.google.com.tw/maps/place/${pharmacy.properties.address}" target="_blank"><div class="markers-icon icon-road"></div></a>
         </div>
       </div>
       <div class="markers-mask-info">
@@ -370,19 +399,53 @@ export default {
       setTimeout(function () {
         $('.sidebar').toggleClass('sidebar-actiev')
       }, 200)
+    },
+    mobilSide () {
+      if (window.screen.width < 500) {
+        this.toggleSidebar()
+      }
+    }
+  },
+  watch: {
+    screenWidth (val) {
+      if (!this.timer) {
+        const vm = this
+        vm.screenWidth = val
+        setTimeout(function () {
+          if (vm.screenWidth < 500) {
+            vm.mobilSide()
+          }
+        }, 10)
+      }
     }
   },
   created () {
     this.isLoading = true
     this.nowDate()
+    window.onresize = () => {
+      return (() => {
+        window.screenWidth = document.body.clientWidth
+        this.screenWidth = window.screenWidth
+      })()
+    }
   },
   mounted () {
     this.openMap()
+    this.mobilSide()
   }
 }
 </script>
 <style lang="scss">
 .img-banner {
   background-image: url('../assets/images/banner_announce_fix.png');
+}
+.icon-unstar {
+  background-image: url('../assets/images/icon_star_unselected.svg');
+}
+.icon-star {
+  background-image: url('../assets/images/icon_star_selected.svg');
+}
+.icon-road {
+  background-image: url('../assets/images/icon_nav.svg');
 }
 </style>
