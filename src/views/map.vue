@@ -56,7 +56,7 @@
             </div>
             <div class="properties-show-frame">
               <ul class="properties-show" v-for="item in pharmacies" :key="item.pharmacies">
-                <li class="properties-card show-cursor" @click="penTo(item)">
+                <li class="properties-card show-cursor" @click="penTo(item, true)">
                   <div class="properties-card-warp">
                     <div class="properties-card-left">
                       <div class="properties-header">
@@ -230,7 +230,7 @@ export default {
       this.pharmacies = []
       this.pharmacies = this.data.filter((pharmacy) => pharmacy.properties.town === this.select.area)
       this.updataMap()
-      this.penTo(this.pharmacies[0])
+      this.penTo(this.pharmacies[0], true)
       if (this.haveUserPosition) {
         this.updatUserPosition()
       }
@@ -265,7 +265,7 @@ export default {
               return element.properties.id === id
             })
             vm.EditLikeList(id)
-            vm.penTo(pharmacy)
+            vm.penTo(pharmacy, false)
           }
         })
       })
@@ -309,10 +309,12 @@ export default {
         )
       }
     },
-    penTo (pharmacy) {
+    penTo (pharmacy, toggleSite) {
       const { properties, geometry } = pharmacy
       const vm = this
-      vm.mobilSide()
+      if (toggleSite) {
+        vm.mobilSide()
+      }
       osmMap.panTo(new L.LatLng(geometry.coordinates[1], geometry.coordinates[0], properties))
       L.marker([pharmacy.geometry.coordinates[1], pharmacy.geometry.coordinates[0]], { weight: 1.5, color: '#222', opacity: 1, icon: blueIcon }).bindPopup(`
       <div class="markers-properties-card-warp">
